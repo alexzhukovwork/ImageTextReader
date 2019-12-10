@@ -3,7 +3,6 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import Letter
-import imageio
 
 SPACE_BOUND = 6
 
