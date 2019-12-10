@@ -3,6 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import Letter
+import imageio
 
 SPACE_BOUND = 6
 
@@ -116,45 +117,23 @@ def getLines(AllLetters, img):
     error = 10
 
     for letter in AllLetters:
-        if num > 0 and abs(prev - letter.getY()) < avg - error:
-            AllLetters.remove(letter)
+        for l in AllLetters:
+            if abs(l.getY() - letter.getY()) < avg - error and AllLetters.__contains__(letter):
+                AllLetters.remove(letter)
 
         prev = letter.getY()
         num += 1
 
-    lines = []
-    for letter in AllLetters:
-        crop_img = img[letter.getY():letter.getY() + letter.getHeight(), 0:0+img.shape[1]]
-        lines.append(crop_img)
-
-    return AllLetters
-
-def getWords(AllLetters, img):
-    AllLetters.sort(key=lambda letter: letter.getY() + letter.getHeight())
-
-    avg = 0
-    num = 0
+    lines = [[[]]]
 
     for letter in AllLetters:
-        avg += letter.getY()
-        num += 1
+        lines.append(((letter.getY(), 0), (letter.getY(), img.shape[1])))
 
-    avg /= num
-    prev = 0
-    num = 0
-    error = 10
+    lines.pop(0)
 
-    for letter in AllLetters:
-        if num > 0 and abs(prev - letter.getY()) < avg - error:
-            AllLetters.remove(letter)
+    lines = list(set(lines))
 
-        prev = letter.getY()
-        num += 1
-
-    lines = []
-    for letter in AllLetters:
-        crop_img = img[letter.getY():letter.getY() + letter.getHeight(), 0:0+img.shape[1]]
-        lines.append(crop_img)
+    return lines
 
 def parseImg(img):
     bndingBx = []
@@ -162,6 +141,8 @@ def parseImg(img):
     blur = cv2.GaussianBlur(img, (5, 5), 0)
     th3 = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
     th3 = cv2.bitwise_not(th3)
+
+
     contours, heirar = cv2.findContours(th3, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     for num in range(0, len(contours)):
         if (heirar[0][num][3] == -1):
@@ -174,18 +155,17 @@ def parseImg(img):
     for bx in bndingBx:
         corners.append(findCorners(bx))
 
-    imgplot = plt.imshow(img, 'gray')
-
-    plt.clf()
     err = 2
     Area = []
 
     for corner in corners:
         Area.append(findArea(corner))
+
     Area = np.asarray(Area)
     avgArea = np.mean(Area)
     stdArea = np.std(Area)
     outlier = (Area < avgArea - stdArea)
+
     for num in range(0, len(outlier)):
         dot = False
         if (outlier[num]):
@@ -255,38 +235,16 @@ def parseImg(img):
 
     preparing = {corners[i][0][0]: corners[i] for i in range(0, len(corners))}
     sortedDict = dict(sorted(preparing.items(), key=lambda kv: (kv[1], kv[0])))
-    sortedDict.pop(0)
 
-    heights = [0]
+   # if (sortedDict.__contains__(0)):
+    #    sortedDict.pop(0)
 
-    values = list(sortedDict.values())
-    newList = [values[i][3][1] for i in range(0, len(values))]
-    error = 10
+  #  values = list(sortedDict.values())
 
-    for i in range(0, len(newList)):
+  #  letters = [[]]
+ #   word_count = 0
 
-        for j in range(0, len(heights)):
-
-            if (heights[j] < newList[i] < heights[j] + error) or heights[j] == 0:
-                if heights[j] == 0:
-                    heights[j] = newList[i]
-
-                newList[i] = heights[j]
-
-                break
-            elif j + 1 == len(heights):
-                heights.append(0)
-
-    for i in range(len(values)):
-        values[i][3][1] = newList[i]
-
-    newVal = {values[i][3][1]: values[i] for i in range(0, len(values))}
-    values = dict(sorted(newVal.items(), key=lambda kv: (kv[1], kv[0])))
-
-    letters = [[]]
-    word_count = 0
-
-    for bx in values.values():
+    for bx in sortedDict.values():
         width = abs(bx[1][0] - bx[0][0])
         height = abs(bx[3][1] - bx[0][1])
 
@@ -295,33 +253,44 @@ def parseImg(img):
 
         newLetter = Letter.Letter([bx[0][0], bx[0][1]], [height, width], counter)
         AllLetters.append(newLetter)
-        counter += 1
-        c = 1
-        crop_img = th3[bx[0][1] - c:bx[3][1] + c, bx[0][0] - c:bx[1][0] + c]
-        plt.imshow(crop_img, 'gray')
+  #      counter += 1
+ #       c = 1
+   #     crop_img = th3[bx[0][1] - c:bx[3][1] + c, bx[0][0] - c:bx[1][0] + c]
+       # plt.imshow(crop_img, 'gray')
+#        corner = bx[0][0]
+  #      distVal = corner - lastCornerX
 
-        corner = bx[0][0]
-        distVal = corner - lastCornerX
+ #       if index > 0:
+  #          print(str(index) + " " + str(distVal))
+ #           d += distVal
 
-        if index > 0:
-            print(str(index) + " " + str(distVal))
-            d += distVal
+  #      lastCornerX = bx[1][0]
+   #     index += 1
 
-        lastCornerX = bx[1][0]
-        index += 1
-
-        letters[word_count].append(crop_img)
+   #     letters[word_count].append(crop_img)
 
     return AllLetters
 
 if __name__ == "__main__":
-
-
     img = cv2.imread('TwoLines.png',0)
 
+    AllLetters = parseImg(img)
+
+    lines = getLines(AllLetters, img)
 
 
-    lines = getLines(AllLetters, th3)
+    for i in range(len(lines)):
+        imgLine = img[lines[i][0][0]:lines[i][0][0] + lines[i][1][0], lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
+        plt.imshow(imgLine)
+        plt.show()
+        letters = parseImg(imgLine)
+
+        for l in letters:
+            IMG = imgLine[l.getY():l.getY()+l.getHeight(), l.getX():l.getX()+l.getWidth()]
+            plt.imshow(IMG)
+            plt.show()
+
+
 
 
 
