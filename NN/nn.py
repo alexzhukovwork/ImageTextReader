@@ -193,6 +193,10 @@ def model(X_train, Y_train, X_test, Y_test, num_iterations=50, learning_rate=0.0
 
     # Accuracy
     weights = w1, b1, w2, b2, w3, b3
+
+    return weights
+
+def check(X_test, Y_test, weights):
     cost, activations = forward_pass(X_test, Y_test, weights)
     z1, a1, z2, a2, z3, a3 = activations
     # pred = np.round(a3)
@@ -205,7 +209,7 @@ def model(X_train, Y_train, X_test, Y_test, num_iterations=50, learning_rate=0.0
     # print(pred == Y_test)
     print('Accuracy:', acc)
 
-    return acc
+    return pred
 
 
 
@@ -263,33 +267,34 @@ def gradient_check(X, Y):
     difference = numerator / denominator
     return difference
 
-# (x_train, y_train), (x_test, y_test) = load_data.load_binary_class_data()
-# model(x_train[:, :100], y_train[:100], x_test[:, :100], y_test[:100])
+def init():
+    # (x_train, y_train), (x_test, y_test) = load_data.load_binary_class_data()
+    # model(x_train[:, :100], y_train[:100], x_test[:, :100], y_test[:100])
 
-# gradient_check(x_train[:, :100], y_train[:100])
+    # gradient_check(x_train[:, :100], y_train[:100])
 
-# import matplotlib.pyplot as plt
-# plt.imshow(x_train[:, 1].reshape(28, 28))
+    # import matplotlib.pyplot as plt
+    # plt.imshow(x_train[:, 1].reshape(28, 28))
 
-(x_train, y_train), (x_test, y_test) = NN.load_data.load_class_data(10)
+    (x_train, y_train), (x_test, y_test) = NN.load_data.load_class_data(10)
 
-plt.figure(figsize=[6,6])
+    plt.figure(figsize=[6,6])
 
-# normalize x
-#x_train = x_train.astype(float) / 255.
+    # normalize x
+    #x_train = x_train.astype(float) / 255.
 
-#x_train, X_val = x_train[:-10000], x_train[-10000:]
+    #x_train, X_val = x_train[:-10000], x_train[-10000:]
 
-x_train = x_train.swapaxes(0,1)
+    #x_train = x_train.swapaxes(0,1)
 
-for i in range(len(x_train)):
- #   plt.subplot(2,2,i+1)
-#    plt.title("Label: %i"%y_train[i])
-    plt.imshow(x_train[i].reshape([28,28]),cmap='gray')
-    plt.show()
+    #for i in range(len(x_train)):
+     #   plt.subplot(2,2,i+1)
+    #    plt.title("Label: %i"%y_train[i])
+      #  plt.imshow(x_train[i].reshape([28,28]),cmap='gray')
+       # plt.show()
 
-#model(x_train, y_train, x_test, y_test)
+    model(x_train, y_train, x_test, y_test)
 
 
-# model(x_train[:, :1000], y_train[:, :1000], x_test[:, :1000], y_test[:, :1000])
+    model(x_train[:, :1000], y_train[:, :1000], x_test[:, :1000], y_test[:, :1000])
 

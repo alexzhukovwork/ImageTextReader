@@ -1,8 +1,15 @@
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-
+import os, sys
+from PIL import Image
 import Letter
+import cv2
+import glob
+import numpy as np
+import NN.nn
+
+
 
 SPACE_BOUND = 6
 
@@ -270,8 +277,22 @@ def parseImg(img):
 
     return AllLetters
 
+def resize(str):
+    size = 128, 128
+
+
+    outfile = str
+
+    try:
+        im = Image.open(str)
+        im.thumbnail(size, Image.ANTIALIAS)
+        im.save(outfile, "JPEG")
+    except IOError:
+        print
+        "cannot create thumbnail for '%s'" % str
+
 if __name__ == "__main__":
-    img = cv2.imread('TwoLines.png',0)
+    img = cv2.imread('TwoLines.png', 0)
 
     AllLetters = parseImg(img)
 
@@ -280,14 +301,105 @@ if __name__ == "__main__":
 
     for i in range(len(lines)):
         imgLine = img[lines[i][0][0]:lines[i][0][0] + lines[i][1][0], lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
-        plt.imshow(imgLine)
-        plt.show()
+      #  plt.imshow(imgLine)
+      #  plt.show()
+        im = Image.fromarray(imgLine)
+        im.save("Letters/" + str(i) + ".jpeg")
         letters = parseImg(imgLine)
+        j = 0
 
         for l in letters:
             IMG = imgLine[l.getY():l.getY()+l.getHeight(), l.getX():l.getX()+l.getWidth()]
-            plt.imshow(IMG)
-            plt.show()
+
+            resized = cv2.resize(IMG, (28,28), interpolation=cv2.INTER_AREA)
+            im = Image.fromarray(resized)
+            im.save("Letters/" + str(i) + " " + str(j) + ".png")
+            print('Resized Dimensions : ', resized.shape)
+
+        #    cv2.imshow("Resized image", resized)
+            j += 1
+
+
+    # TODO return train, test data
+    # Train data
+    train = []
+    train_labels = []
+    files = glob.glob("Data/Train/A/*.png")  # your image path
+    for myFile in files:
+        image = cv2.imread(myFile)
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
+        train.append(gray_image)
+        train_labels.append([1., 0.])
+    files = glob.glob("Data/Train/B/*.png")
+    for myFile in files:
+        image = cv2.imread(myFile)
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
+        train.append(gray_image)
+        train_labels.append([0., 1.])
+
+    train = np.array(train, dtype='int32')  # as mnist
+    train_labels = np.array(train_labels, dtype='int32')  # as mnist
+    train = np.reshape(train, [train.shape[0], train.shape[1] * train.shape[2]])
+
+    # Test data
+    test = []
+    test_labels = []
+    files = glob.glob("Data/Test/A/*.png")
+    for myFile in files:
+        image = cv2.imread(myFile)
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
+        test.append(gray_image)
+        test_labels.append([1., 0.])  # class1
+    files = glob.glob("Data/Test/B/*.png")
+    for myFile in files:
+        image = cv2.imread(myFile)
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
+        test.append(gray_image)
+        test_labels.append([0., 1.])  # class2
+
+    test = np.array(test, dtype='int32')  # as mnist example
+    test_labels = np.array(test_labels, dtype='int32')  # as mnist
+    test = np.reshape(test, [test.shape[0], test.shape[1] * test.shape[2]])
+
+    x_train = train
+    y_train = train_labels
+    x_test = test
+    y_test = test_labels
+
+    plt.figure(figsize=[6, 6])
+
+    # normalize x
+    # x_train = x_train.astype(float) / 255.
+
+   # x_train, X_val = x_train[:-62], x_train[-62:]
+
+    x_train = x_train.swapaxes(0, 1)
+    y_train = y_train.swapaxes(0, 1)
+    x_test = x_test.swapaxes(0, 1)
+    y_test = y_test.swapaxes(0, 1)
+
+    #for i in range(len(x_train)):
+        #   plt.subplot(2,2,i+1)
+        #    plt.title("Label: %i"%y_train[i])
+        #plt.imshow(x_train[i].reshape([28, 28]), cmap='gray')
+      #  plt.show()
+
+    w = NN.nn.model(x_train, y_train, x_test, y_test, 1000, 0.001)
+    pred = NN.nn.check(x_test, y_test, w)
+    pred = pred.swapaxes(0, 1)
+    y_test = y_test.swapaxes(0, 1)
+
+    for p in pred:
+        a = np.mean(p == y_test[0])
+        if  a > 0.6:
+            print("A")
+        else:
+            print("B")
+
 
 
 
