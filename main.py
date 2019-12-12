@@ -12,6 +12,7 @@ import NN.nn
 
 
 SPACE_BOUND = 6
+LETTER_NUM = 2
 
 def findCorners(bound):
     c1 = [bound[3][0],bound[0][1]]
@@ -280,7 +281,6 @@ def parseImg(img):
 def resize(str):
     size = 128, 128
 
-
     outfile = str
 
     try:
@@ -290,6 +290,37 @@ def resize(str):
     except IOError:
         print
         "cannot create thumbnail for '%s'" % str
+
+
+def preprocess_image(file):
+    image = cv2.imread(file)
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
+    return gray_image
+
+
+def parse_path(path):
+    items = []
+    labels = []
+    for dir_name in range(0, LETTER_NUM):
+        real_path = f"Data/{path}/{str(dir_name)}/*.png"
+        files = glob.glob(real_path)
+        for file in files:
+            gray_image = preprocess_image(file)
+            items.append(gray_image)
+            label = [1. if i is dir_name else 0. for i in range(0, LETTER_NUM)]
+            labels.append(label)
+    items = np.array(items, dtype='int32')  # as mnist
+    labels = np.array(labels, dtype='int32')  # as mnist
+    items = np.reshape(items, [items.shape[0], items.shape[1] * items.shape[2]])
+    return items, labels
+
+
+def prepare_nn_data():
+    train_items, train_labels = parse_path("Train")
+    test_items, test_labels = parse_path("Test")
+    return train_items, train_labels, test_items, test_labels
+
 
 if __name__ == "__main__":
     img = cv2.imread('TwoLines.png', 0)
@@ -320,56 +351,7 @@ if __name__ == "__main__":
             j += 1
 
 
-    # TODO return train, test data
-    # Train data
-    train = []
-    train_labels = []
-    files = glob.glob("Data/Train/A/*.png")  # your image path
-    for myFile in files:
-        image = cv2.imread(myFile)
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
-        train.append(gray_image)
-        train_labels.append([1., 0.])
-    files = glob.glob("Data/Train/B/*.png")
-    for myFile in files:
-        image = cv2.imread(myFile)
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
-        train.append(gray_image)
-        train_labels.append([0., 1.])
-
-    train = np.array(train, dtype='int32')  # as mnist
-    train_labels = np.array(train_labels, dtype='int32')  # as mnist
-    train = np.reshape(train, [train.shape[0], train.shape[1] * train.shape[2]])
-
-    # Test data
-    test = []
-    test_labels = []
-    files = glob.glob("Data/Test/A/*.png")
-    for myFile in files:
-        image = cv2.imread(myFile)
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
-        test.append(gray_image)
-        test_labels.append([1., 0.])  # class1
-    files = glob.glob("Data/Test/B/*.png")
-    for myFile in files:
-        image = cv2.imread(myFile)
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray_image = cv2.resize(gray_image, (28, 28), interpolation=cv2.INTER_AREA)
-        test.append(gray_image)
-        test_labels.append([0., 1.])  # class2
-
-    test = np.array(test, dtype='int32')  # as mnist example
-    test_labels = np.array(test_labels, dtype='int32')  # as mnist
-    test = np.reshape(test, [test.shape[0], test.shape[1] * test.shape[2]])
-
-    x_train = train
-    y_train = train_labels
-    x_test = test
-    y_test = test_labels
-
+    x_train, y_train, x_test, y_test = prepare_nn_data()
     plt.figure(figsize=[6, 6])
 
     # normalize x
