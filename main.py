@@ -12,7 +12,7 @@ import NN.nn
 
 
 SPACE_BOUND = 6
-LETTER_NUM = 2
+LETTER_NUM = 32
 
 def findCorners(bound):
     c1 = [bound[3][0],bound[0][1]]
@@ -121,7 +121,7 @@ def getLines(AllLetters, img):
     avg /= num
     prev = 0
     num = 0
-    error = 10
+    error = 5
 
     for letter in AllLetters:
         for l in AllLetters:
@@ -134,7 +134,7 @@ def getLines(AllLetters, img):
     lines = [[[]]]
 
     for letter in AllLetters:
-        lines.append(((letter.getY(), 0), (letter.getY(), img.shape[1])))
+        lines.append(((letter.getY(), 0), (letter.getHeight(), img.shape[1])))
 
     lines.pop(0)
 
@@ -145,12 +145,13 @@ def getLines(AllLetters, img):
 def parseImg(img):
     bndingBx = []
     corners = []
-    blur = cv2.GaussianBlur(img, (5, 5), 0)
-    th3 = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    #blur = cv2.GaussianBlur(img, (5, 5), 0)
+    th3 = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 1)
     th3 = cv2.bitwise_not(th3)
 
+    err = 0
 
-    contours, heirar = cv2.findContours(th3, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    contours, heirar = cv2.findContours(th3, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
     for num in range(0, len(contours)):
         if (heirar[0][num][3] == -1):
             left = tuple(contours[num][contours[num][:, :, 0].argmin()][0])
@@ -162,7 +163,6 @@ def parseImg(img):
     for bx in bndingBx:
         corners.append(findCorners(bx))
 
-    err = 2
     Area = []
 
     for corner in corners:
@@ -323,60 +323,58 @@ def prepare_nn_data():
 
 
 if __name__ == "__main__":
-    img = cv2.imread('TwoLines.png', 0)
+    img = cv2.imread('DataSet.png', 0)
 
     AllLetters = parseImg(img)
 
     lines = getLines(AllLetters, img)
-
+    error = 10
 
     for i in range(len(lines)):
-        imgLine = img[lines[i][0][0]:lines[i][0][0] + lines[i][1][0], lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
-      #  plt.imshow(imgLine)
-      #  plt.show()
+        imgLine = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error, lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
         im = Image.fromarray(imgLine)
         im.save("Letters/" + str(i) + ".jpeg")
+
+      #  plt.imshow(imgLine, cmap='gray')
+       # plt.show()
+
         letters = parseImg(imgLine)
         j = 0
 
         for l in letters:
-            IMG = imgLine[l.getY():l.getY()+l.getHeight(), l.getX():l.getX()+l.getWidth()]
+            IMG = imgLine[l.getY():l.getY()+ l.getHeight(), l.getX():l.getX()+ l.getWidth()]
+         #   plt.imshow(IMG, cmap='gray')
+          #  plt.show()
+            if not os.path.exists("Data/Train/" + str(j)):
+                os.mkdir("Data/Train/" + str(j))
 
             resized = cv2.resize(IMG, (28,28), interpolation=cv2.INTER_AREA)
             im = Image.fromarray(resized)
-            im.save("Letters/" + str(i) + " " + str(j) + ".png")
-            print('Resized Dimensions : ', resized.shape)
+            im.save("Data/Train/" + str(j) + "/" + str(i) + " " + str(j) + ".png")
 
-        #    cv2.imshow("Resized image", resized)
             j += 1
 
+
+    
     x_train, y_train, x_test, y_test = prepare_nn_data()
     plt.figure(figsize=[6, 6])
-
-    # normalize x
-    # x_train = x_train.astype(float) / 255.
-
-   # x_train, X_val = x_train[:-62], x_train[-62:]
 
     x_train = x_train.swapaxes(0, 1)
     y_train = y_train.swapaxes(0, 1)
     x_test = x_test.swapaxes(0, 1)
     y_test = y_test.swapaxes(0, 1)
 
-    #for i in range(len(x_train)):
-        #   plt.subplot(2,2,i+1)
-        #    plt.title("Label: %i"%y_train[i])
-        #plt.imshow(x_train[i].reshape([28, 28]), cmap='gray')
-      #  plt.show()
 
     w = NN.nn.model(x_train, y_train, x_test, y_test, 1000, 0.001)
-    pred = NN.nn.check(x_test, y_test, w)
+    pred = NN.nn.check(x_train, y_train, w)
     pred = pred.swapaxes(0, 1)
     y_test = y_test.swapaxes(0, 1)
+    y_train = y_train.swapaxes(0, 1)
 
+# TODO create dictionary<Label, Letter> dLetters[[1.......0]] = A
     for p in pred:
-        a = np.mean(p == y_test[0])
-        if  a > 0.6:
+        a = np.mean(p == y_train[0])
+        if a > 0.98:
             print("A")
         else:
             print("B")
