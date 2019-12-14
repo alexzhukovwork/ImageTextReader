@@ -16,8 +16,10 @@ LETTER_NUM = 32
 
 
 def to_letter(label: list):
-    index = label.index(1.)
-    return chr(ord('А') + index)
+    """
+    :raise: ValueError
+    """
+    return chr(ord('А') + label.index(1.))
 
 
 def findCorners(bound):
