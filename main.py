@@ -14,12 +14,19 @@ import NN.nn
 SPACE_BOUND = 6
 LETTER_NUM = 32
 
+
+def to_letter(label: list):
+    index = label.index(1.)
+    return chr(ord('А') + index)
+
+
 def findCorners(bound):
     c1 = [bound[3][0],bound[0][1]]
     c2 = [bound[1][0],bound[0][1]]
     c3 = [bound[1][0],bound[2][1]]
     c4 = [bound[3][0],bound[2][1]]
     return [c1,c2,c3,c4]
+
 
 def findThresh(data):
     Binsize = 50
@@ -371,7 +378,9 @@ if __name__ == "__main__":
     y_test = y_test.swapaxes(0, 1)
     y_train = y_train.swapaxes(0, 1)
 
-# TODO create dictionary<Label, Letter> dLetters[[1.......0]] = A
+    # use to_letter() to determinate real char by label
+    # example: >>> __letter = to_letter([0., 1., 0.])
+    # 'Б'
     for p in pred:
         a = np.mean(p == y_train[0])
         if a > 0.98:
