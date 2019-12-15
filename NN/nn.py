@@ -131,6 +131,19 @@ def forward_pass(X, Y, weights):
     cost = categorical_cross_entropy(Y, a3)
     return (cost, (z1, a1, z2, a2, z3, a3))
 
+def forward_pass_check(X, weights):
+    w1, b1, w2, b2, w3, b3 = weights
+    # forward pass
+    z1 = linear(w1, X, b1)
+    a1 = relu(z1)
+
+    z2 = linear(w2, a1, b2)
+    a2 = relu(z2)
+
+    z3 = linear(w3, a2, b3)
+    a3 = softmax(z3)
+
+    return (z1, a1, z2, a2, z3, a3)
 
 
 def backpropagate(X, Y, weights, activations):
@@ -196,18 +209,12 @@ def model(X_train, Y_train, X_test, Y_test, num_iterations=50, learning_rate=0.0
 
     return weights
 
-def check(X_test, Y_test, weights):
-    cost, activations = forward_pass(X_test, Y_test, weights)
+def check(X_test, weights):
+    activations = forward_pass_check(X_test, weights=weights)
     z1, a1, z2, a2, z3, a3 = activations
-    # pred = np.round(a3)
 
-    # this is for cross entropy
     pred = np.zeros(a3.shape)
     pred[a3.argmax(axis=0), np.arange(a3.shape[1])] = 1
-
-    acc = np.mean(pred == Y_test)
-    # print(pred == Y_test)
-    print('Accuracy:', acc)
 
     return pred
 
