@@ -177,7 +177,7 @@ def model(X_train, Y_train, X_test, Y_test, num_iterations=50, learning_rate=0.0
     n_x, n_m = X_train.shape
     n_y, _ = Y_train.shape
     # n_y = 1
-    n_h1, n_h2 = [100, 100]
+    n_h1, n_h2 = [33, 33]
 
     w1, b1 = initialize_weights(n_x, n_h1)
     w2, b2 = initialize_weights(n_h1, n_h2)

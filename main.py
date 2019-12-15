@@ -135,24 +135,28 @@ def getLines(AllLetters, img):
     avg /= num
     prev = 0
     num = 0
-    error = 5
+    error = avg / 10
+    max_height = 0
 
     for letter in AllLetters:
-        for l in AllLetters:
-            if abs(l.getY() - letter.getY()) < avg - error and AllLetters.__contains__(letter):
-                AllLetters.remove(letter)
+        if max_height < letter.getHeight():
+            max_height = letter.getHeight()
 
-        prev = letter.getY()
+        for l in AllLetters:
+            if abs(l.getY() - letter.getY()) < avg:
+                AllLetters.remove(l)
+
         num += 1
 
     lines = [[[]]]
 
     for letter in AllLetters:
-        lines.append(((letter.getY(), 0), (letter.getHeight(), img.shape[1])))
+        lines.append(((letter.getY(), 0), (max_height, img.shape[1])))
 
     lines.pop(0)
 
     lines = list(set(lines))
+    lines.sort(key=lambda letter: letter[0][0])
 
     return lines
 
@@ -255,8 +259,8 @@ def parseImg(img):
     index = 0
     lastCornerX = 0
 
-    preparing = {corners[i][0][0]: corners[i] for i in range(0, len(corners))}
-    sortedDict = dict(sorted(preparing.items(), key=lambda kv: (kv[1], kv[0])))
+  #  preparing = {corners[i][0][0]: corners[i] for i in range(0, len(corners))}
+  #  sortedDict = dict(sorted(preparing.items(), key=lambda kv: (kv[1], kv[0])))
 
     # if (sortedDict.__contains__(0)):
     #    sortedDict.pop(0)
@@ -266,7 +270,7 @@ def parseImg(img):
     #  letters = [[]]
     #   word_count = 0
 
-    for bx in sortedDict.values():
+    for bx in corners:
         width = abs(bx[1][0] - bx[0][0])
         height = abs(bx[3][1] - bx[0][1])
 
@@ -290,6 +294,9 @@ def parseImg(img):
     #     index += 1
 
     #     letters[word_count].append(crop_img)
+
+
+    AllLetters.sort(key=lambda letter: letter.getX())
 
     return AllLetters
 
@@ -331,6 +338,19 @@ def parse_path(path):
     items = np.reshape(items, [items.shape[0], items.shape[1] * items.shape[2]])
     return items, labels
 
+def img_list_to_nparray(imgs):
+    items = []
+
+    for img in imgs:
+ #       gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.resize(img, (28, 28), interpolation=cv2.INTER_AREA)
+        items.append(gray_image)
+
+    items = np.array(items, dtype='int32')  # as mnist
+    items = np.reshape(items, [items.shape[0], items.shape[1] * items.shape[2]])
+    items = items.swapaxes(0, 1)
+    return items
+
 
 def prepare_nn_data():
     train_items, train_labels = parse_path("Train")
@@ -341,37 +361,39 @@ def prepare_nn_data():
 def is_trained():
     return os.path.exists("Weights.npy")
 
-def prepare_train_data(path):
-    img = cv2.imread(path, 0)
 
-    AllLetters = parseImg(img)
+def prepare_train_data(path, need_generate_new_data = False):
+    if need_generate_new_data:
+        img = cv2.imread(path, 0)
 
-    lines = getLines(AllLetters, img)
-    error = 10
+        AllLetters = parseImg(img)
 
-    for i in range(len(lines)):
-        line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
-                      lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
+        lines = getLines(AllLetters, img)
+        error = 10
 
-        im = Image.fromarray(line_images)
-        im.save("Letters/" + str(i) + ".jpeg")
-        letters = parseImg(line_images)
-        j = 0
+        for i in range(len(lines)):
+            line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
+                          lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
 
-        for l in letters:
-            img_in_line = line_images[l.getY():l.getY() + l.getHeight(), l.getX():l.getX() + l.getWidth()]
-            if not os.path.exists("Data/Train/" + str(j)):
-                os.mkdir("Data/Train/" + str(j))
+            im = Image.fromarray(line_images)
+            im.save("Letters/" + str(i) + ".jpeg")
+            letters = parseImg(line_images)
+            j = 0
 
-            resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
-            im = Image.fromarray(resized)
+            for l in letters:
+                img_in_line = line_images[l.getY():l.getY() + l.getHeight(), l.getX():l.getX() + l.getWidth()]
+                if not os.path.exists("Data/Train/" + str(j)):
+                    os.mkdir("Data/Train/" + str(j))
 
-            im.save("Data/Train/" + str(j) + "/" + str(i) + " " + str(j) + ".png")
+                resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
+                im = Image.fromarray(resized)
 
-            j += 1
+                im.save("Data/Train/" + str(j) + "/" + str(i) + " " + str(j) + ".png")
+
+                j += 1
 
     x_train, y_train, x_test, y_test = prepare_nn_data()
-    plt.figure(figsize=[6, 6])
+   # plt.figure(figsize=[6, 6])
 
     x_train = x_train.swapaxes(0, 1)
     y_train = y_train.swapaxes(0, 1)
@@ -382,31 +404,106 @@ def prepare_train_data(path):
 
 
 def get_weights():
-    return np.load("Weights.npy", allow_pickle=True)
+    if not is_trained():
+        x_train, y_train, x_test, y_test = prepare_train_data("DataSet.png")
+        weights = NN.nn.model(x_train, y_train, x_test, y_test, 10000, 0.0001)
+        save_weights(weights)
+    else:
+        weights = np.load("Weights.npy", allow_pickle=True)
+
+    return weights
 
 
 def save_weights(weights):
     np.save("Weights.npy", weights)
 
 
-if __name__ == "__main__":
-
-    x_train, y_train, x_test, y_test = prepare_train_data("DataSet.png")
-
-    if not is_trained():
-        weights = NN.nn.model(x_train, y_train, x_test, y_test, 1000, 0.001)
-        save_weights(weights)
-    else:
-        weights = get_weights()
-
-    pred = NN.nn.check(x_train, weights)
-    pred = pred.swapaxes(0, 1)
-    y_test = y_test.swapaxes(0, 1)
-    y_train = y_train.swapaxes(0, 1)
-
-    # use to_letter() to determinate real char by label
-    # example: >>> __letter = to_letter([0., 1., 0.])
-    # 'Б'
-    for p in pred:
+def print_prediction(prediction):
+    string = ""
+    for p in prediction:
         # a = np.mean(p == y_train[0])
-        print(to_letter(p.tolist()))
+        string += to_letter(p.tolist())
+
+    return string
+
+
+if __name__ == "__main__":
+    weights = get_weights()
+
+    img = cv2.imread("test.png", 0)
+
+    AllLetters = parseImg(img)
+
+    lines = getLines(AllLetters, img)
+    error = 0
+
+    lines_img = [[]]
+
+    for i in range(len(lines)):
+        line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
+                      lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
+        letters = parseImg(line_images)
+        j = 0
+
+        lines_img.append([])
+
+        for l in letters:
+            img_in_line = line_images[l.getY():l.getY() + l.getHeight(), l.getX():l.getX() + l.getWidth()]
+            resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
+            j += 1
+            lines_img[i].append([resized, l])
+
+    lines_img.pop(lines_img.__len__()-1)
+
+    letters = [[[]]]
+
+    letters.pop(0)
+    word_number = 0
+
+    currentX = 0
+    prevX = 0
+
+    avg = 0
+    word_count = 0
+
+    for i in range(len(lines_img)):
+
+        for j in range(len(lines_img[i])):
+            l = lines_img[i][j]
+
+            avg += l[1].getWidth()
+
+            word_count += 1
+
+    prevLetter = 0
+
+    for i in range(len(lines_img)):
+        letters.append([[]])
+        word_number = 0
+        for j in range(len(lines_img[i])):
+            l = lines_img[i][j]
+            currentX = l[1].getX()
+            prevWord = word_number
+
+            if j > 0 and currentX - prevX > prevLetter + prevLetter / 2:
+                word_number += 1
+                letters[i].append([])
+
+            letters[i][word_number].append(l[0])
+            prevLetter = l[1].getWidth()
+            prevX = l[1].getX()
+
+    final_str = ""
+
+    for letter in letters:
+        for word in letter:
+            prepared = img_list_to_nparray(word)
+            prediction = NN.nn.check(prepared, weights).swapaxes(0, 1)
+            final_str += print_prediction(prediction) + " "
+
+        final_str += "\n"
+
+    final_str = final_str.replace("ЬЫ", "Ы")
+    final_str = final_str.replace(" Ы", "Ы ")
+    final_str = final_str.replace("Й", "И")
+    print(final_str)
