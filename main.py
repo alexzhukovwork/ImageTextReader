@@ -1,6 +1,4 @@
-import cv2
-import numpy as np
-from matplotlib import pyplot as plt
+
 import os, sys
 from PIL import Image
 import Letter
@@ -8,7 +6,8 @@ import cv2
 import glob
 import numpy as np
 import NN.nn
-
+import time
+from numba import cuda
 SPACE_BOUND = 6
 LETTER_NUM = 32
 
@@ -129,11 +128,10 @@ def getLines(AllLetters, img):
     num = 0
 
     for letter in AllLetters:
-        avg += letter.getY()
+        avg += letter.getHeight()
         num += 1
 
     avg /= num
-    prev = 0
     num = 0
     error = avg / 10
     max_height = 0
@@ -143,7 +141,7 @@ def getLines(AllLetters, img):
             max_height = letter.getHeight()
 
         for l in AllLetters:
-            if abs(l.getY() - letter.getY()) < avg:
+            if abs(l.getY() - letter.getY()) < avg + error:
                 AllLetters.remove(l)
 
         num += 1
@@ -406,16 +404,19 @@ def prepare_train_data(path, need_generate_new_data = False):
 def get_weights():
     if not is_trained():
         x_train, y_train, x_test, y_test = prepare_train_data("DataSet.png")
-        weights = NN.nn.model(x_train, y_train, x_test, y_test, 10000, 0.0001)
+
+
+
+        weights = NN.nn.model(x_train, y_train, 1000, 0.001)
         save_weights(weights)
     else:
         weights = np.load("Weights.npy", allow_pickle=True)
-
+#
     return weights
 
 
 def save_weights(weights):
-    np.save("Weights.npy", weights)
+    np.save("Weights.npy", weights, allow_pickle=True)
 
 
 def print_prediction(prediction):
@@ -427,40 +428,31 @@ def print_prediction(prediction):
     return string
 
 
-if __name__ == "__main__":
-    weights = get_weights()
+def print_letters(letters):
+    final_str = ""
 
-    img = cv2.imread("test.png", 0)
+    for letter in letters:
+        for word in letter:
+            prepared = img_list_to_nparray(word)
+            prediction = NN.nn.check(prepared, weights).swapaxes(0, 1)
+            final_str += print_prediction(prediction) + " "
 
-    AllLetters = parseImg(img)
+        final_str += "\n"
 
-    lines = getLines(AllLetters, img)
-    error = 0
+    final_str = final_str.replace("ЬЫ", "Ы")
+    final_str = final_str.replace("Ы ", "Ы")
+    final_str = final_str.replace(" Ы", "Ы ")
+    final_str = final_str.replace("Й", "И")
 
-    lines_img = [[]]
+    print(final_str)
 
-    for i in range(len(lines)):
-        line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
-                      lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
-        letters = parseImg(line_images)
-        j = 0
-
-        lines_img.append([])
-
-        for l in letters:
-            img_in_line = line_images[l.getY():l.getY() + l.getHeight(), l.getX():l.getX() + l.getWidth()]
-            resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
-            j += 1
-            lines_img[i].append([resized, l])
-
-    lines_img.pop(lines_img.__len__()-1)
+def split_word(lines_img):
+    lines_img.pop(lines_img.__len__() - 1)
 
     letters = [[[]]]
 
     letters.pop(0)
     word_number = 0
-
-    currentX = 0
     prevX = 0
 
     avg = 0
@@ -483,9 +475,8 @@ if __name__ == "__main__":
         for j in range(len(lines_img[i])):
             l = lines_img[i][j]
             currentX = l[1].getX()
-            prevWord = word_number
 
-            if j > 0 and currentX - prevX > prevLetter + prevLetter / 2:
+            if j > 0 and currentX - prevX > prevLetter + prevLetter / 1.8:
                 word_number += 1
                 letters[i].append([])
 
@@ -493,17 +484,40 @@ if __name__ == "__main__":
             prevLetter = l[1].getWidth()
             prevX = l[1].getX()
 
-    final_str = ""
+    return letters
 
-    for letter in letters:
-        for word in letter:
-            prepared = img_list_to_nparray(word)
-            prediction = NN.nn.check(prepared, weights).swapaxes(0, 1)
-            final_str += print_prediction(prediction) + " "
+def get_lines_img(img, lines):
+    error = 0
+    lines_img = [[]]
 
-        final_str += "\n"
+    for i in range(len(lines)):
+        line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
+                      lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
+        letters = parseImg(line_images)
+        j = 0
 
-    final_str = final_str.replace("ЬЫ", "Ы")
-    final_str = final_str.replace(" Ы", "Ы ")
-    final_str = final_str.replace("Й", "И")
-    print(final_str)
+        lines_img.append([])
+
+        for l in letters:
+            img_in_line = line_images[l.getY():l.getY() + l.getHeight(), l.getX():l.getX() + l.getWidth()]
+            resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
+            j += 1
+            lines_img[i].append([resized, l])
+
+    return lines_img
+
+if __name__ == "__main__":
+    weights = get_weights()
+
+    img = cv2.imread("test3.png", 0)
+
+    start = time.time()
+
+    lines = getLines(parseImg(img), img)
+    lines_img = get_lines_img(img, lines)
+
+    letters = split_word(lines_img)
+
+    print_letters(letters)
+
+    print(time.time() - start)

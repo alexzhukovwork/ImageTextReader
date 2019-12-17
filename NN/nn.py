@@ -3,6 +3,11 @@ import NN.load_data
 import copy
 from matplotlib import pyplot as plt
 # Model setup
+from numba import cuda, float32, float64
+import math
+
+import time
+
 
 def initialize_weights(n_x, n_h):
     w = np.random.randn(n_h, n_x) * xavier_initialization(n_x)
@@ -14,9 +19,103 @@ def xavier_initialization(n_x):
     return 2 / n_x
 
 
+# Controls threads per block and shared memory usage.
+# The computation will be done on blocks of TPBxTPB elements.
+TPB = 8
+
+
+@cuda.jit
+def fast_matmul(A, B, C):
+    """
+    Perform matrix multiplication of C = A * B
+    Each thread computes one element of the result matrix C
+    """
+
+    # Define an array in the shared memory
+    # The size and type of the arrays must be known at compile time
+    sA = cuda.shared.array(shape=(TPB, TPB), dtype=float32)
+    sB = cuda.shared.array(shape=(TPB, TPB), dtype=float32)
+
+    x, y = cuda.grid(2)
+
+    tx = cuda.threadIdx.x
+    ty = cuda.threadIdx.y
+
+    if x >= C.shape[0] and y >= C.shape[1]:
+        # Quit if (x, y) is outside of valid C boundary
+        return
+
+    # Each thread computes one element in the result matrix.
+    # The dot product is chunked into dot products of TPB-long vectors.
+    tmp = 0.
+    #    print(A.shape[1])
+    #   print(A.shape[1] / TPB)
+    for i in range(int(A.shape[1] / TPB)):
+        # Preload data into shared memory
+        sA[tx, ty] = A[x, ty + i * TPB]
+        sB[tx, ty] = B[tx + i * TPB, y]
+
+        # Wait until all threads finish preloading
+        cuda.syncthreads()
+
+        # Computes partial product on the shared memory
+        for j in range(TPB):
+            tmp += sA[tx, j] * sB[j, ty]
+
+        # Wait until all threads finish computing
+        cuda.syncthreads()
+
+    C[x, y] = tmp
+
+
+@cuda.jit
+def matmul(A, B, C):
+    """Perform matrix multiplication of C = A * B
+    """
+    row, col = cuda.grid(2)
+    if row < C.shape[0] and col < C.shape[1]:
+        tmp = 0.
+        for k in range(A.shape[1]):
+            tmp += A[row, k] * B[k, col]
+        C[row, col] = tmp
+
+
 def linear(w, x, b):
     # (n_h, n_x) * (n_x, m) + (n_h, 1) = (n_h, m)
+    # Copy the arrays to the device
+    # The data array
+    #   A = w #.astype(float)  # [32 x 48] matrix containing all 3's
+    #    B = x #.astype(float)  # [48 x 16] matrix containing all 4's
+
+
     return np.dot(w, x) + b
+
+'''
+
+    A_global_mem = cuda.to_device(w)
+    B_global_mem = cuda.to_device(x)
+    C_global_mem = cuda.device_array((w.shape[0], x.shape[1]))  # [32 x 16] matrix result
+
+  #  print(str(w.shape[0]) + " " + str(x.shape[1]))
+
+
+
+    # Configure the blocks
+    threadsperblock = (TPB, TPB)
+    blockspergrid_x = int(math.ceil(w.shape[0] / threadsperblock[1]))
+    blockspergrid_y = int(math.ceil(x.shape[1] / threadsperblock[0]))
+    blockspergrid = (blockspergrid_x, blockspergrid_y)
+
+    # Start the kernel
+    fast_matmul[blockspergrid, threadsperblock](A_global_mem, B_global_mem, C_global_mem)
+    res = C_global_mem.copy_to_host()
+
+ #   print(res)
+#    print(str(np.dot(w, x)))
+#
+   # print(C)
+'''
+
 
 
 def linear_d(dz, w, a_prev, b):
@@ -26,9 +125,9 @@ def linear_d(dz, w, a_prev, b):
     # a = (n_x, m)
     _, m = a_prev.shape
 
-    da_prev = np.dot(w.T, dz)   # (n_x, n_h) * (n_h, m)
-    dw = 1 / m * np.dot(dz, a_prev.T)    # (n_h, m) * (m, n_x)
-    db = np.mean(dz, axis=1, keepdims=True)     # (n_h, m) / m
+    da_prev = np.dot(w.T, dz)  # (n_x, n_h) * (n_h, m)
+    dw = 1 / m * np.dot(dz, a_prev.T)  # (n_h, m) * (m, n_x)
+    db = np.mean(dz, axis=1, keepdims=True)  # (n_h, m) / m
     return da_prev, dw, db
 
 
@@ -48,10 +147,10 @@ def softmax(z):
     return exp / np.sum(exp, axis=0, keepdims=True)
 
 
-
 def softmax_d(softmax):
-    s = softmax.reshape(-1,1)
+    s = softmax.reshape(-1, 1)
     return np.diagflat(s) - np.dot(s, s.T)
+
 
 # def softmax_d(z):
 #     Sz = softmax(z)
@@ -90,6 +189,7 @@ def sigmoid_d(z):
     # a must be sigmoid activated
     return z * (1 - z)
 
+
 #
 def compute_cost(Y, z):
     return - np.mean(Y * np.log(z) + (1 - Y) * np.log(1 - z))
@@ -98,6 +198,7 @@ def compute_cost(Y, z):
 def categorical_cross_entropy(y, a):
     cost = np.sum(y * np.log(a), axis=1, keepdims=True)
     return - np.mean(cost)
+
 
 def categorical_cross_entropy_d(y, a3):
     # cost_d = y / a3 + (1 - y) / (1 - a3)
@@ -115,6 +216,7 @@ def binary_cross_entropy_d(y, a):
     cost_d = y - a / (y * (1 - y))  # same as above
     return - cost_d
 
+
 def forward_pass(X, Y, weights):
     w1, b1, w2, b2, w3, b3 = weights
     # forward pass
@@ -130,6 +232,7 @@ def forward_pass(X, Y, weights):
     # Cost
     cost = categorical_cross_entropy(Y, a3)
     return (cost, (z1, a1, z2, a2, z3, a3))
+
 
 def forward_pass_check(X, weights):
     w1, b1, w2, b2, w3, b3 = weights
@@ -154,9 +257,9 @@ def backpropagate(X, Y, weights, activations):
 
     cost_d = categorical_cross_entropy_d(Y, a3)
     a3_d = softmax_d_m(a3)
-    print('A3', a3.shape)
-    print(cost_d.shape)
-    print(a3_d.shape)
+    #   print('A3', a3.shape)
+    #  print(cost_d.shape)
+    #   print(a3_d.shape)
     cost_d_r = cost_d.reshape((cost_d.shape[0], 1, cost_d.shape[1]))
     dz3_step = np.einsum('ijk,jyk->iyk', a3_d, cost_d_r)
     dz3_step_r = dz3_step.reshape((dz3_step.shape[0], dz3_step.shape[2]))
@@ -172,42 +275,9 @@ def backpropagate(X, Y, weights, activations):
     _, dw1, db1 = linear_d(dz1, w1, X, b1)
     return dw1, db1, dw2, db2, dw3, db3
 
+
 # Let's create a model with 2 hidden layers with 100 units
-def model(X_train, Y_train, X_test, Y_test, num_iterations=50, learning_rate=0.01):
-    n_x, n_m = X_train.shape
-    n_y, _ = Y_train.shape
-    # n_y = 1
-    n_h1, n_h2 = [33, 33]
 
-    w1, b1 = initialize_weights(n_x, n_h1)
-    w2, b2 = initialize_weights(n_h1, n_h2)
-    w3, b3 = initialize_weights(n_h2, n_y)
-
-    for i in range(num_iterations):
-        # forward pass
-        weights = w1, b1, w2, b2, w3, b3
-        cost, activations = forward_pass(X_train, Y_train, weights)
-        print('Cost:', cost)
-
-        gradients = backpropagate(X_train, Y_train, weights, activations)
-        dw1, db1, dw2, db2, dw3, db3 = gradients
-
-        assert(dw3.shape == w3.shape)
-        assert(dw2.shape == w2.shape)
-        assert(dw1.shape == w1.shape)
-
-        # Update weights
-        w3 -= learning_rate * dw3
-        b3 -= learning_rate * db3
-        w2 -= learning_rate * dw2
-        b2 -= learning_rate * db2
-        w1 -= learning_rate * dw1
-        b1 -= learning_rate * db1
-
-    # Accuracy
-    weights = w1, b1, w2, b2, w3, b3
-
-    return weights
 
 def check(X_test, weights):
     activations = forward_pass_check(X_test, weights=weights)
@@ -219,12 +289,11 @@ def check(X_test, weights):
     return pred
 
 
-
 def gradient_check(X, Y):
     n_x, n_m = X.shape
     # n_y, _ = Y_train.shape
     n_y = 1
-    n_h1, n_h2 = [10, 10]
+    n_h1, n_h2 = [1024, 1024]
 
     w1, b1 = initialize_weights(n_x, n_h1)
     w2, b2 = initialize_weights(n_h1, n_h2)
@@ -274,34 +343,42 @@ def gradient_check(X, Y):
     difference = numerator / denominator
     return difference
 
-def init():
-    # (x_train, y_train), (x_test, y_test) = load_data.load_binary_class_data()
-    # model(x_train[:, :100], y_train[:100], x_test[:, :100], y_test[:100])
 
-    # gradient_check(x_train[:, :100], y_train[:100])
+def model(X_train, Y_train, num_iterations=50, learning_rate=0.01):
+    start_time = time.time()
+    n_x, n_m = X_train.shape
+    n_y, _ = Y_train.shape
 
-    # import matplotlib.pyplot as plt
-    # plt.imshow(x_train[:, 1].reshape(28, 28))
+    n_h1, n_h2 = [1024, 1024]
 
-    (x_train, y_train), (x_test, y_test) = NN.load_data.load_class_data(10)
+    w1, b1 = initialize_weights(n_x, n_h1)
+    w2, b2 = initialize_weights(n_h1, n_h2)
+    w3, b3 = initialize_weights(n_h2, n_y)
 
-    plt.figure(figsize=[6,6])
+    for i in range(num_iterations):
+        # forward pass
+        weights = w1, b1, w2, b2, w3, b3
+        cost, activations = forward_pass(X_train, Y_train, weights)
+        #   print('Cost:', cost)
 
-    # normalize x
-    #x_train = x_train.astype(float) / 255.
+        gradients = backpropagate(X_train, Y_train, weights, activations)
+        dw1, db1, dw2, db2, dw3, db3 = gradients
 
-    #x_train, X_val = x_train[:-10000], x_train[-10000:]
+        assert (dw3.shape == w3.shape)
+        assert (dw2.shape == w2.shape)
+        assert (dw1.shape == w1.shape)
 
-    #x_train = x_train.swapaxes(0,1)
+        # Update weights
+        w3 -= learning_rate * dw3
+        b3 -= learning_rate * db3
+        w2 -= learning_rate * dw2
+        b2 -= learning_rate * db2
+        w1 -= learning_rate * dw1
+        b1 -= learning_rate * db1
 
-    #for i in range(len(x_train)):
-     #   plt.subplot(2,2,i+1)
-    #    plt.title("Label: %i"%y_train[i])
-      #  plt.imshow(x_train[i].reshape([28,28]),cmap='gray')
-       # plt.show()
+    # Accuracy
+    weights = w1, b1, w2, b2, w3, b3
 
-    model(x_train, y_train, x_test, y_test)
+    print("time: " + str(time.time() - start_time))
 
-
-    model(x_train[:, :1000], y_train[:, :1000], x_test[:, :1000], y_test[:, :1000])
-
+    return weights
