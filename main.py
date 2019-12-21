@@ -508,16 +508,10 @@ def get_lines_img(img, lines):
 
 if __name__ == "__main__":
     weights = get_weights()
-
     img = cv2.imread("test3.png", 0)
-
     start = time.time()
-
     lines = getLines(parseImg(img), img)
     lines_img = get_lines_img(img, lines)
-
     letters = split_word(lines_img)
-
     print_letters(letters)
-
     print(time.time() - start)
