@@ -8,7 +8,7 @@ import NN.nn
 import time
 
 from PIL import Image
-from flask import Flask
+from flask import Flask, request, jsonify, send_from_directory
 # from numba import cuda
 
 SPACE_BOUND = 6
@@ -510,19 +510,31 @@ def get_lines_img(img, lines):
     return lines_img
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='/app/main')
 weights = get_weights()
 
-@app.route('/')
-def hello_world():
-    img = cv2.imread("test3.png", 0)
+@app.route('/recognize', methods=['POST'])
+def recognize():
+    content = request.get_json()
+    file_name = content['image_path']
+    print(f'Incoming content {file_name}')
+    img = cv2.imread(file_name, 0)
     start = time.time()
     lines = getLines(parseImg(img), img)
     lines_img = get_lines_img(img, lines)
     letters = split_word(lines_img)
     printed_letters = print_letters(letters)
     printed_time = time.time() - start
-    return f"Text: {printed_letters} <br> Time: {printed_time}"
+    return jsonify({"text": printed_letters, "time": printed_time})
+
+@app.route('/<path:path>')
+def send_js(path):
+    return send_from_directory('', path)
+
+
+@app.route('/')
+def root():
+    return app.send_static_file('index.html')
 
 
 if __name__ == "__main__":
