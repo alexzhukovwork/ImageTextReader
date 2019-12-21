@@ -1,13 +1,16 @@
 
 import os, sys
-from PIL import Image
 import Letter
 import cv2
 import glob
 import numpy as np
 import NN.nn
 import time
-from numba import cuda
+
+from PIL import Image
+from flask import Flask
+# from numba import cuda
+
 SPACE_BOUND = 6
 LETTER_NUM = 32
 
@@ -428,9 +431,8 @@ def print_prediction(prediction):
     return string
 
 
-def print_letters(letters):
+def print_letters(letters: list) -> str:
     final_str = ""
-
     for letter in letters:
         for word in letter:
             prepared = img_list_to_nparray(word)
@@ -444,7 +446,7 @@ def print_letters(letters):
     final_str = final_str.replace(" Ы", "Ы ")
     final_str = final_str.replace("Й", "И")
 
-    print(final_str)
+    return final_str
 
 def split_word(lines_img):
     lines_img.pop(lines_img.__len__() - 1)
@@ -486,6 +488,7 @@ def split_word(lines_img):
 
     return letters
 
+
 def get_lines_img(img, lines):
     error = 0
     lines_img = [[]]
@@ -506,18 +509,21 @@ def get_lines_img(img, lines):
 
     return lines_img
 
-if __name__ == "__main__":
-    weights = get_weights()
 
+app = Flask(__name__)
+weights = get_weights()
+
+@app.route('/')
+def hello_world():
     img = cv2.imread("test3.png", 0)
-
     start = time.time()
-
     lines = getLines(parseImg(img), img)
     lines_img = get_lines_img(img, lines)
-
     letters = split_word(lines_img)
+    printed_letters = print_letters(letters)
+    printed_time = time.time() - start
+    return f"Text: {printed_letters} <br> Time: {printed_time}"
 
-    print_letters(letters)
 
-    print(time.time() - start)
+if __name__ == "__main__":
+    app.run("0.0.0.0", port=80, debug=True)
