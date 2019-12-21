@@ -1,13 +1,16 @@
 
 import os, sys
-from PIL import Image
 import Letter
 import cv2
 import glob
 import numpy as np
 import NN.nn
 import time
-from numba import cuda
+
+from PIL import Image
+from flask import Flask, request, jsonify, send_from_directory
+# from numba import cuda
+
 SPACE_BOUND = 6
 LETTER_NUM = 32
 
@@ -428,9 +431,8 @@ def print_prediction(prediction):
     return string
 
 
-def print_letters(letters):
+def print_letters(letters: list) -> str:
     final_str = ""
-
     for letter in letters:
         for word in letter:
             prepared = img_list_to_nparray(word)
@@ -444,7 +446,7 @@ def print_letters(letters):
     final_str = final_str.replace(" Ы", "Ы ")
     final_str = final_str.replace("Й", "И")
 
-    print(final_str)
+    return final_str
 
 def split_word(lines_img):
     lines_img.pop(lines_img.__len__() - 1)
@@ -486,6 +488,7 @@ def split_word(lines_img):
 
     return letters
 
+
 def get_lines_img(img, lines):
     error = 0
     lines_img = [[]]
@@ -506,12 +509,32 @@ def get_lines_img(img, lines):
 
     return lines_img
 
-if __name__ == "__main__":
-    weights = get_weights()
-    img = cv2.imread("test3.png", 0)
+app = Flask(__name__, static_folder='/app/main')
+weights = get_weights()
+
+@app.route('/recognize', methods=['POST'])
+def recognize():
+    content = request.get_json()
+    file_name = content['image_path']
+    print(f'Incoming content {file_name}')
+    img = cv2.imread(file_name, 0)
     start = time.time()
     lines = getLines(parseImg(img), img)
     lines_img = get_lines_img(img, lines)
     letters = split_word(lines_img)
-    print_letters(letters)
-    print(time.time() - start)
+    printed_letters = print_letters(letters)
+    printed_time = time.time() - start
+    return jsonify({"text": printed_letters, "time": printed_time})
+
+@app.route('/<path:path>')
+def send_js(path):
+    return send_from_directory('', path)
+
+
+@app.route('/')
+def root():
+    return app.send_static_file('index.html')
+
+
+if __name__ == "__main__":
+    app.run("0.0.0.0", port=80, debug=True)
