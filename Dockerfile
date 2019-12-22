@@ -15,9 +15,7 @@ RUN  conda install python=3.7 \
       matplotlib \
   && conda clean -ay
 
-COPY ./ ./
 
 ENV FLASK_APP main.py
 
 EXPOSE 80
-CMD ["python", "main.py"]

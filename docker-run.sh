@@ -1,1 +1,4 @@
-docker run -it -P -p 5000:80 image-text-reader:latest
+docker run -it -P -p 5000:80 \
+    -v $(pwd):/app/main \
+    image-text-reader:latest \
+    python main.py
