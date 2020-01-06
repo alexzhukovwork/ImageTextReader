@@ -1,4 +1,3 @@
-
 import os, sys
 from PIL import Image
 import Letter
@@ -8,6 +7,8 @@ import numpy as np
 import NN.nn
 import time
 from numba import cuda
+import multiprocessing as mp
+
 SPACE_BOUND = 6
 LETTER_NUM = 32
 
@@ -257,8 +258,8 @@ def parseImg(img):
     index = 0
     lastCornerX = 0
 
-  #  preparing = {corners[i][0][0]: corners[i] for i in range(0, len(corners))}
-  #  sortedDict = dict(sorted(preparing.items(), key=lambda kv: (kv[1], kv[0])))
+    #  preparing = {corners[i][0][0]: corners[i] for i in range(0, len(corners))}
+    #  sortedDict = dict(sorted(preparing.items(), key=lambda kv: (kv[1], kv[0])))
 
     # if (sortedDict.__contains__(0)):
     #    sortedDict.pop(0)
@@ -292,7 +293,6 @@ def parseImg(img):
     #     index += 1
 
     #     letters[word_count].append(crop_img)
-
 
     AllLetters.sort(key=lambda letter: letter.getX())
 
@@ -336,11 +336,12 @@ def parse_path(path):
     items = np.reshape(items, [items.shape[0], items.shape[1] * items.shape[2]])
     return items, labels
 
+
 def img_list_to_nparray(imgs):
     items = []
 
     for img in imgs:
- #       gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        #       gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray_image = cv2.resize(img, (28, 28), interpolation=cv2.INTER_AREA)
         items.append(gray_image)
 
@@ -360,7 +361,7 @@ def is_trained():
     return os.path.exists("Weights.npy")
 
 
-def prepare_train_data(path, need_generate_new_data = False):
+def prepare_train_data(path, need_generate_new_data=False):
     if need_generate_new_data:
         img = cv2.imread(path, 0)
 
@@ -391,7 +392,7 @@ def prepare_train_data(path, need_generate_new_data = False):
                 j += 1
 
     x_train, y_train, x_test, y_test = prepare_nn_data()
-   # plt.figure(figsize=[6, 6])
+    # plt.figure(figsize=[6, 6])
 
     x_train = x_train.swapaxes(0, 1)
     y_train = y_train.swapaxes(0, 1)
@@ -405,13 +406,11 @@ def get_weights():
     if not is_trained():
         x_train, y_train, x_test, y_test = prepare_train_data("DataSet.png")
 
-
-
         weights = NN.nn.model(x_train, y_train, 1000, 0.001)
         save_weights(weights)
     else:
         weights = np.load("Weights.npy", allow_pickle=True)
-#
+    #
     return weights
 
 
@@ -445,6 +444,7 @@ def print_letters(letters):
     final_str = final_str.replace("Й", "И")
 
     print(final_str)
+
 
 def split_word(lines_img):
     lines_img.pop(lines_img.__len__() - 1)
@@ -486,6 +486,7 @@ def split_word(lines_img):
 
     return letters
 
+
 def get_lines_img(img, lines):
     error = 0
     lines_img = [[]]
@@ -494,30 +495,106 @@ def get_lines_img(img, lines):
         line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
                       lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
         letters = parseImg(line_images)
-        j = 0
 
         lines_img.append([])
 
-        for l in letters:
-            img_in_line = line_images[l.getY():l.getY() + l.getHeight(), l.getX():l.getX() + l.getWidth()]
+        for j in range(len(letters)):
+            img_in_line = line_images[
+                          letters[j].getY():letters[j].getY() + letters[j].getHeight(),
+                          letters[j].getX():letters[j].getX() + letters[j].getWidth()
+                          ]
+
             resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
-            j += 1
-            lines_img[i].append([resized, l])
+            lines_img[i].append([resized, letters[j]])
 
     return lines_img
 
-if __name__ == "__main__":
-    weights = get_weights()
 
-    img = cv2.imread("test3.png", 0)
+results = []
+letters = []
+
+def get_lines_img_async(img, lines, pool):
+    results.clear()
+    letters.clear()
+
+    for i in range(len(lines)):
+        pool.apply_async(lines_async, args=(img, lines[i], i), callback=callback_lines)
+        #lines_async(img, lines[i], i, pool)
+
+    pool.close()
+    pool.join()
+
+    pool = mp.Pool(mp.cpu_count())
+
+    for i in range(len(letters)):
+        for j in range(len(letters[i][0])):
+            pool.apply_async(get_letter, args=(letters[i][1], letters[i][0][j], i, j), callback=collect_result)
+        #collect_result(get_letter(line_images, letters[j], i, j))
+
+    pool.close()
+    pool.join()
+
+    return results
+
+
+def lines_async(img, l, i):
+
+    line_images = img[
+                  l[0][0]:l[0][0] + l[1][0],
+                  l[0][1]:l[0][1] + l[1][1]
+                  ]
+
+    return [[parseImg(line_images), line_images], i]
+
+
+def callback_lines(letter):
+    i = letter[1]
+
+    while len(letters) <= i:
+        letters.append([])
+
+    letters[i] = letter[0]
+
+
+def get_letter(line_images, l, i, j):
+    img_in_line = line_images[
+                  l.getY():l.getY() + l.getHeight(),
+                  l.getX():l.getX() + l.getWidth()]
+
+    resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
+    return [[resized, l], i, j]
+
+
+def collect_result(result):
+    i = result[1]
+    j = result[2]
+
+    while len(results) <= i:
+        results.append([])
+
+    while len(results[i]) <= j:
+        results[i].append([])
+
+    results[i][j] = result[0]
+
+
+if __name__ == "__main__":
+    pool = mp.Pool(2)
+
+    weights = get_weights()
+    img = cv2.imread("test4.png", 0)
 
     start = time.time()
 
     lines = getLines(parseImg(img), img)
-    lines_img = get_lines_img(img, lines)
+    lines_img = get_lines_img_async(img, lines, pool)
+
+ #   lines_img = get_lines_img(img, lines)
 
     letters = split_word(lines_img)
 
     print_letters(letters)
 
     print(time.time() - start)
+
+    print("Number of processors: ", mp.cpu_count())
