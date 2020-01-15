@@ -170,6 +170,9 @@ def parseImg(img):
     err = 0
 
     contours, heirar = cv2.findContours(th3, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+
+    start = time.time()
+
     for num in range(0, len(contours)):
         if (heirar[0][num][3] == -1):
             left = tuple(contours[num][contours[num][:, :, 0].argmin()][0])
@@ -178,6 +181,9 @@ def parseImg(img):
             bottom = tuple(contours[num][contours[num][:, :, 1].argmax()][0])
             bndingBx.append([top, right, bottom, left])
 
+    print("1: " + str(time.time() - start))
+
+    start = time.time()
     for bx in bndingBx:
         corners.append(findCorners(bx))
 
@@ -190,6 +196,10 @@ def parseImg(img):
     avgArea = np.mean(Area)
     stdArea = np.std(Area)
     outlier = (Area < avgArea - stdArea)
+
+    print("2: " + str(time.time() - start))
+
+    start = time.time()
 
     for num in range(0, len(outlier)):
         dot = False
@@ -250,24 +260,12 @@ def parseImg(img):
                 bestCorner[3][0] = 0
                 bestCorner[3][1] = 0
 
-    ###############################################
-    # Take letters and turn them into objects
+    print("3: " + str(time.time() - start))
+
+    start = time.time()
+
     AllLetters = []
     counter = 0
-    d = 0
-    index = 0
-    lastCornerX = 0
-
-    #  preparing = {corners[i][0][0]: corners[i] for i in range(0, len(corners))}
-    #  sortedDict = dict(sorted(preparing.items(), key=lambda kv: (kv[1], kv[0])))
-
-    # if (sortedDict.__contains__(0)):
-    #    sortedDict.pop(0)
-
-    #  values = list(sortedDict.values())
-
-    #  letters = [[]]
-    #   word_count = 0
 
     for bx in corners:
         width = abs(bx[1][0] - bx[0][0])
@@ -278,25 +276,146 @@ def parseImg(img):
 
         newLetter = Letter.Letter([bx[0][0], bx[0][1]], [height, width], counter)
         AllLetters.append(newLetter)
-    #      counter += 1
-    #       c = 1
-    #     crop_img = th3[bx[0][1] - c:bx[3][1] + c, bx[0][0] - c:bx[1][0] + c]
-    # plt.imshow(crop_img, 'gray')
-    #        corner = bx[0][0]
-    #      distVal = corner - lastCornerX
-
-    #       if index > 0:
-    #          print(str(index) + " " + str(distVal))
-    #           d += distVal
-
-    #      lastCornerX = bx[1][0]
-    #     index += 1
-
-    #     letters[word_count].append(crop_img)
 
     AllLetters.sort(key=lambda letter: letter.getX())
 
+    print("4: " + str(time.time() - start))
+
     return AllLetters
+
+
+def parse_img_async(img):
+    bndingBx = []
+    corners = []
+    # blur = cv2.GaussianBlur(img, (5, 5), 0)
+    th3 = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 1)
+    th3 = cv2.bitwise_not(th3)
+
+    err = 0
+
+    contours, heirar = cv2.findContours(th3, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+
+    start = time.time()
+
+    for num in range(0, len(contours)):
+        if (heirar[0][num][3] == -1):
+            left = tuple(contours[num][contours[num][:, :, 0].argmin()][0])
+            right = tuple(contours[num][contours[num][:, :, 0].argmax()][0])
+            top = tuple(contours[num][contours[num][:, :, 1].argmin()][0])
+            bottom = tuple(contours[num][contours[num][:, :, 1].argmax()][0])
+            bndingBx.append([top, right, bottom, left])
+
+    print("1: " + str(time.time() - start))
+
+    start = time.time()
+    for bx in bndingBx:
+        corners.append(findCorners(bx))
+
+    Area = []
+
+    for corner in corners:
+        Area.append(findArea(corner))
+
+    Area = np.asarray(Area)
+    avgArea = np.mean(Area)
+    stdArea = np.std(Area)
+    outlier = (Area < avgArea - stdArea)
+
+    print("2: " + str(time.time() - start))
+
+    start = time.time()
+
+    #pool = mp.Pool(mp.cpu_count())
+
+    [pool.apply_async(third_part_async, args=(img, num, outlier, corners, th3, err)) for num in range(0, len(outlier))]
+    #pool.close()
+    #pool.join()
+
+    #for num in range(0, len(outlier)):
+    #    third_part_async(img, num, outlier, corners, th3, err)
+
+    print("3: " + str(time.time() - start))
+
+    start = time.time()
+
+    AllLetters = []
+    counter = 0
+
+    for bx in corners:
+        width = abs(bx[1][0] - bx[0][0])
+        height = abs(bx[3][1] - bx[0][1])
+
+        if width * height == 0:
+            continue
+
+        newLetter = Letter.Letter([bx[0][0], bx[0][1]], [height, width], counter)
+        AllLetters.append(newLetter)
+
+    AllLetters.sort(key=lambda letter: letter.getX())
+
+    print("4: " + str(time.time() - start))
+
+    return AllLetters
+
+
+def third_part_async(img, num, outlier, corners, th3, err):
+    dot = False
+    if (outlier[num]):
+        black = np.zeros((len(img), len(img[0])), np.uint8)
+        cv2.rectangle(black, (corners[num][0][0], corners[num][0][1]), (corners[num][2][0], corners[num][2][1]),
+                      (255, 255), -1)
+        fin = cv2.bitwise_and(th3, black)
+        tempCnt, tempH = cv2.findContours(fin, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in tempCnt:
+            rect = cv2.minAreaRect(cnt)
+            axis1 = rect[1][0] / 2.0
+            axis2 = rect[1][1] / 2.0
+            if (axis1 != 0 and axis2 != 0):
+                ratio = axis1 / axis2  # calculate ratio of axis
+                # if ratio is close to 1 (circular), then most likely a dot
+                if ratio > 1.0 - err and ratio < err + 1.0:
+                    dot = True
+        # if contour is a dot, we want to connect it to the closest
+        # bounding box that is beneath it
+        if dot:
+            bestCorner = corners[num]
+            closest = np.inf
+            for crn in corners:  # go through each set of corners
+                # find width and height of bounding box
+                width = abs(crn[0][0] - crn[1][0])
+                height = abs(crn[0][1] - crn[3][1])
+                # check to make sure character is below in position (greater y value)
+                if (corners[num][0][1] > crn[0][1]):
+                    continue  # if it's above the dot we don't care
+                elif dist(corners[num][0], crn[0]) < closest and crn != corners[
+                    num]:  # and (findSlope(findCenterCoor(corners[num]),crn[0])) > 0:
+                    # if(findArea(mergeBoxes(corners[num],crn))> avgArea+stdArea):
+                    #     continue
+                    # check the distance if it is below the dot
+                    cent = findCenterCoor(crn)
+                    bestCorner = crn
+                    closest = dist(corners[num][0], crn[0])
+            # modify the coordinates of the pic to include the dot
+            # print(bestCorner)
+            newCorners = mergeBoxes(corners[num], bestCorner)
+            corners.append(newCorners)
+            # print(newCorners)
+            corners[num][0][0] = 0
+            corners[num][0][1] = 0
+            corners[num][1][0] = 0
+            corners[num][1][1] = 0
+            corners[num][2][0] = 0
+            corners[num][2][1] = 0
+            corners[num][3][0] = 0
+            corners[num][3][1] = 0
+            bestCorner[0][0] = 0
+            bestCorner[0][1] = 0
+            bestCorner[1][0] = 0
+            bestCorner[1][1] = 0
+            bestCorner[2][0] = 0
+            bestCorner[2][1] = 0
+            bestCorner[3][0] = 0
+            bestCorner[3][1] = 0
 
 
 def resize(str):
@@ -487,6 +606,28 @@ def split_word(lines_img):
     return letters
 
 
+def get_lines_img_async(img, lines):
+    error = 0
+    lines_img = [[]]
+
+    for i in range(len(lines)):
+        line_images = img[lines[i][0][0] - error:lines[i][0][0] + lines[i][1][0] + error,
+                      lines[i][0][1]:lines[i][0][1] + lines[i][1][1]]
+        letters = parse_img_async(line_images)
+
+        lines_img.append([])
+
+        for j in range(len(letters)):
+            img_in_line = line_images[
+                          letters[j].getY():letters[j].getY() + letters[j].getHeight(),
+                          letters[j].getX():letters[j].getX() + letters[j].getWidth()
+                          ]
+
+            resized = cv2.resize(img_in_line, (28, 28), interpolation=cv2.INTER_AREA)
+            lines_img[i].append([resized, letters[j]])
+
+    return lines_img
+
 def get_lines_img(img, lines):
     error = 0
     lines_img = [[]]
@@ -513,6 +654,7 @@ def get_lines_img(img, lines):
 results = []
 letters = []
 
+'''
 def get_lines_img_async(img, lines, pool):
     results.clear()
     letters.clear()
@@ -531,11 +673,11 @@ def get_lines_img_async(img, lines, pool):
             pool.apply_async(get_letter, args=(letters[i][1], letters[i][0][j], i, j), callback=collect_result)
         #collect_result(get_letter(line_images, letters[j], i, j))
 
-    pool.close()
-    pool.join()
-
+    #pool.close()
+   # pool.join()
+#
     return results
-
+'''
 
 def lines_async(img, l, i):
 
@@ -544,7 +686,7 @@ def lines_async(img, l, i):
                   l[0][1]:l[0][1] + l[1][1]
                   ]
 
-    return [[parseImg(line_images), line_images], i]
+    return [[parse_img_async(line_images), line_images], i]
 
 
 def callback_lines(letter):
@@ -586,10 +728,13 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    lines = getLines(parseImg(img), img)
-    lines_img = get_lines_img_async(img, lines, pool)
+    #parse_img_async(img)
 
- #   lines_img = get_lines_img(img, lines)
+    print(time.time() - start)
+
+    lines = getLines(parse_img_async(img), img)
+
+    lines_img = get_lines_img_async(img, lines)
 
     letters = split_word(lines_img)
 
@@ -597,4 +742,4 @@ if __name__ == "__main__":
 
     print(time.time() - start)
 
-    print("Number of processors: ", mp.cpu_count())
+#
