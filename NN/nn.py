@@ -7,6 +7,7 @@ from numba import cuda, float32, float64
 import math
 
 import time
+import multiprocessing as mp
 
 
 def initialize_weights(n_x, n_h):
@@ -293,7 +294,7 @@ def gradient_check(X, Y):
     n_x, n_m = X.shape
     # n_y, _ = Y_train.shape
     n_y = 1
-    n_h1, n_h2 = [1024, 1024]
+    n_h1, n_h2 = [512, 512]
 
     w1, b1 = initialize_weights(n_x, n_h1)
     w2, b2 = initialize_weights(n_h1, n_h2)
@@ -349,32 +350,20 @@ def model(X_train, Y_train, num_iterations=50, learning_rate=0.01):
     n_x, n_m = X_train.shape
     n_y, _ = Y_train.shape
 
-    n_h1, n_h2 = [1024, 1024]
+    n_h1, n_h2 = [512, 512]
 
     w1, b1 = initialize_weights(n_x, n_h1)
     w2, b2 = initialize_weights(n_h1, n_h2)
     w3, b3 = initialize_weights(n_h2, n_y)
+  #  pool = mp.Pool(6)
 
+
+   # [pool.apply_async(Back, args=(w1, b1, w2, b2, w3, b3, X_train, Y_train, learning_rate, i)) for i in range((num_iterations))]
+
+ #   pool.close()
+ #   pool.join()
     for i in range(num_iterations):
-        # forward pass
-        weights = w1, b1, w2, b2, w3, b3
-        cost, activations = forward_pass(X_train, Y_train, weights)
-        #   print('Cost:', cost)
-
-        gradients = backpropagate(X_train, Y_train, weights, activations)
-        dw1, db1, dw2, db2, dw3, db3 = gradients
-
-        assert (dw3.shape == w3.shape)
-        assert (dw2.shape == w2.shape)
-        assert (dw1.shape == w1.shape)
-
-        # Update weights
-        w3 -= learning_rate * dw3
-        b3 -= learning_rate * db3
-        w2 -= learning_rate * dw2
-        b2 -= learning_rate * db2
-        w1 -= learning_rate * dw1
-        b1 -= learning_rate * db1
+        Back(w1, b1, w2, b2, w3, b3, X_train, Y_train, learning_rate, i)
 
     # Accuracy
     weights = w1, b1, w2, b2, w3, b3
@@ -382,3 +371,26 @@ def model(X_train, Y_train, num_iterations=50, learning_rate=0.01):
     print("time: " + str(time.time() - start_time))
 
     return weights
+
+def Back(w1, b1, w2, b2, w3, b3, X_train, Y_train, learning_rate, i):
+    # forward pass
+    weights = w1, b1, w2, b2, w3, b3
+    cost, activations = forward_pass(X_train, Y_train, weights)
+    #   print('Cost:', cost)
+
+    gradients = backpropagate(X_train, Y_train, weights, activations)
+    dw1, db1, dw2, db2, dw3, db3 = gradients
+
+    assert (dw3.shape == w3.shape)
+    assert (dw2.shape == w2.shape)
+    assert (dw1.shape == w1.shape)
+
+    # Update weights
+    w3 -= learning_rate * dw3
+    b3 -= learning_rate * db3
+    w2 -= learning_rate * dw2
+    b2 -= learning_rate * db2
+    w1 -= learning_rate * dw1
+    b1 -= learning_rate * db1
+
+    print("step " + str(i))
