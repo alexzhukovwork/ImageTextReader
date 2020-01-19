@@ -1,1 +1,1 @@
-docker run -v G:/projects/PictureText:/app/main image-text-reader:latest python main.py
+docker run -it -P -p 5000:80 -v G:/projects/PictureText:/app/main image-text-reader:latest python main.py
