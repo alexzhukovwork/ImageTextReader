@@ -55,8 +55,8 @@ def findThresh(data):
     bounds = range(1, Binsize)
     # begin minimization routine
     for itr in range(0, Binsize):
-        if (itr == Binsize - 1):
-            break;
+        if itr == (Binsize - 1):
+            break
         p1 = np.asarray(norm_dens[0:itr])
         p2 = np.asarray(norm_dens[itr + 1:])
         q1 = cum_dist[itr]
@@ -452,8 +452,7 @@ def resize(str):
         im.thumbnail(size, Image.ANTIALIAS)
         im.save(outfile, "JPEG")
     except IOError:
-        print
-        "cannot create thumbnail for '%s'" % str
+        print("cannot create thumbnail for '%s'" % str)
 
 
 def preprocess_image(file):
@@ -681,30 +680,6 @@ def get_lines_img(img, lines):
 results = []
 letters = []
 
-'''
-def get_lines_img_async(img, lines, pool):
-    results.clear()
-    letters.clear()
-
-    for i in range(len(lines)):
-        pool.apply_async(lines_async, args=(img, lines[i], i), callback=callback_lines)
-        #lines_async(img, lines[i], i, pool)
-
-    pool.close()
-    pool.join()
-
-    pool = mp.Pool(mp.cpu_count())
-
-    for i in range(len(letters)):
-        for j in range(len(letters[i][0])):
-            pool.apply_async(get_letter, args=(letters[i][1], letters[i][0][j], i, j), callback=collect_result)
-        #collect_result(get_letter(line_images, letters[j], i, j))
-
-    #pool.close()
-   # pool.join()
-#
-    return results
-'''
 
 
 def lines_async(img, l, i):
@@ -747,37 +722,13 @@ def collect_result(result):
     results[i][j] = result[0]
 
 
-'''img = cv2.imread("test1.png", 0)
 
-    start = time.time()
+pool = mp.Pool(2)
+app = Flask(__name__, static_folder='/app/main')
+weights = get_weights()
 
-    # parse_img_async(img)
-
-    print(time.time() - start)
-
-    lines = getLines(parse_img_async(img), img)
-
-    lines_img = get_lines_img_async(img, lines)
-
-    letters = split_word(lines_img)
-
-    print_letters(letters)
-
-    print(time.time() - start)
-'''
-
-if __name__ == "__main__":
-    pool = mp.Pool(2)
-
-#    weights = get_weights(False)
-#    img = cv2.imread("test1.png", 0)
-
-    app = Flask(__name__, static_folder='/app/main')
-    weights = get_weights()
-#>>>>>>> ui_front_v2
 
 @app.route('/recognize', methods=['POST'])
-
 def recognize():
     content = request.get_json()
     file_name = content['image_path']
