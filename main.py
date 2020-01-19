@@ -10,14 +10,22 @@ from numba import cuda
 import multiprocessing as mp
 
 SPACE_BOUND = 6
-LETTER_NUM = 32
+LETTER_NUM = 44
 
+characters = {42: ".", 43: ","}
 
 def to_letter(label: list):
     """
     :raise: ValueError
     """
-    return chr(ord('А') + label.index(1.))
+    index = label.index(1.)
+
+    if index > 31 and index < 42:
+        return chr(ord('0') + index - 32)
+    elif index < 32:
+        return chr(ord('А') + index)
+    else:
+        return characters[index]
 
 
 def findCorners(bound):
@@ -126,16 +134,18 @@ def getLines(AllLetters, img):
     AllLetters.sort(key=lambda letter: letter.getY() + letter.getHeight())
 
     avg = 0
-    num = 0
+    num = 1
 
     for letter in AllLetters:
         avg += letter.getHeight()
         num += 1
 
-    avg /= num
+    avg /= (num-1)
+    print(num)
     num = 0
-    error = avg / 10
+    error = avg/10
     max_height = 0
+
 
     for letter in AllLetters:
         if max_height < letter.getHeight():
@@ -146,6 +156,15 @@ def getLines(AllLetters, img):
                 AllLetters.remove(l)
 
         num += 1
+
+    for letter in AllLetters:
+        if max_height < letter.getHeight():
+            max_height = letter.getHeight()
+
+        for l in AllLetters:
+            if abs(l.getY() - letter.getY()) < avg + error:
+                AllLetters.remove(l)
+
 
     lines = [[[]]]
 
@@ -325,13 +344,13 @@ def parse_img_async(img):
 
     start = time.time()
 
-    #pool = mp.Pool(mp.cpu_count())
+    # pool = mp.Pool(mp.cpu_count())
 
     [pool.apply_async(third_part_async, args=(img, num, outlier, corners, th3, err)) for num in range(0, len(outlier))]
-    #pool.close()
-    #pool.join()
+    # pool.close()
+    # pool.join()
 
-    #for num in range(0, len(outlier)):
+    # for num in range(0, len(outlier)):
     #    third_part_async(img, num, outlier, corners, th3, err)
 
     print("3: " + str(time.time() - start))
@@ -521,11 +540,11 @@ def prepare_train_data(path, need_generate_new_data=False):
     return x_train, y_train, x_test, y_test
 
 
-def get_weights():
-    if not is_trained():
-        x_train, y_train, x_test, y_test = prepare_train_data("DataSet.png")
+def get_weights(need_to_train=False):
+    if not is_trained() or need_to_train:
+        x_train, y_train, x_test, y_test = prepare_train_data("dataset1.png")
 
-        weights = NN.nn.model(x_train, y_train, 1000, 0.001)
+        weights = NN.nn.model(x_train, y_train, 10000, 0.0001)
         save_weights(weights)
     else:
         weights = np.load("Weights.npy", allow_pickle=True)
@@ -557,6 +576,7 @@ def print_letters(letters):
 
         final_str += "\n"
 
+    final_str = final_str.replace("Ь.", "Ы")
     final_str = final_str.replace("ЬЫ", "Ы")
     final_str = final_str.replace("Ы ", "Ы")
     final_str = final_str.replace(" Ы", "Ы ")
@@ -628,6 +648,7 @@ def get_lines_img_async(img, lines):
 
     return lines_img
 
+
 def get_lines_img(img, lines):
     error = 0
     lines_img = [[]]
@@ -679,8 +700,8 @@ def get_lines_img_async(img, lines, pool):
     return results
 '''
 
-def lines_async(img, l, i):
 
+def lines_async(img, l, i):
     line_images = img[
                   l[0][0]:l[0][0] + l[1][0],
                   l[0][1]:l[0][1] + l[1][1]
@@ -720,15 +741,11 @@ def collect_result(result):
     results[i][j] = result[0]
 
 
-if __name__ == "__main__":
-    pool = mp.Pool(2)
-
-    weights = get_weights()
-    img = cv2.imread("test4.png", 0)
+'''img = cv2.imread("test1.png", 0)
 
     start = time.time()
 
-    #parse_img_async(img)
+    # parse_img_async(img)
 
     print(time.time() - start)
 
@@ -741,5 +758,25 @@ if __name__ == "__main__":
     print_letters(letters)
 
     print(time.time() - start)
+'''
 
-#
+if __name__ == "__main__":
+    pool = mp.Pool(2)
+
+    weights = get_weights(False)
+    img = cv2.imread("test1.png", 0)
+
+    start = time.time()
+
+
+    print(time.time() - start)
+
+    lines = getLines(parse_img_async(img), img)
+
+    lines_img = get_lines_img_async(img, lines)
+
+    letters = split_word(lines_img)
+
+    print_letters(letters)
+
+    print(time.time() - start)
